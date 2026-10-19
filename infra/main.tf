@@ -51,6 +51,38 @@ data "aws_cloudfront_origin_request_policy" "all_except_host" {
   name = "Managed-AllViewerExceptHostHeader"
 }
 
+resource "aws_cloudfront_response_headers_policy" "security_headers" {
+  name = "${var.project}-security-headers"
+
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 63072000
+      include_subdomains         = true
+      preload                    = true
+      override                   = true
+    }
+
+    content_security_policy {
+      content_security_policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src https://www.youtube.com https://open.spotify.com https://bandcamp.com; connect-src 'self'"
+      override                = true
+    }
+
+    content_type_options {
+      override = true
+    }
+
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+  }
+}
+
 resource "aws_cloudfront_distribution" "site" {
   enabled             = true
   comment             = var.project
@@ -77,12 +109,13 @@ resource "aws_cloudfront_distribution" "site" {
   }
 
   default_cache_behavior {
-    target_origin_id       = "s3"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
+    target_origin_id           = "s3"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = data.aws_cloudfront_cache_policy.caching_optimized.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security_headers.id
   }
 
   ordered_cache_behavior {
@@ -217,7 +250,8 @@ resource "aws_iam_role_policy" "contact_lambda" {
         Sid      = "Ses"
         Effect   = "Allow"
         Action   = ["ses:SendEmail", "ses:SendRawEmail"]
-        Resource = "*"
+        # Scoped to all verified identities in this account/region
+        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/*"
       },
     ]
   })
@@ -365,16 +399,39 @@ resource "aws_iam_role_policy" "github" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "SandboxDeploy"
+        Sid      = "S3Site"
+        Effect   = "Allow"
+        Action   = ["s3:*"]
+        Resource = ["arn:aws:s3:::${local.bucket_name}", "arn:aws:s3:::${local.bucket_name}/*"]
+      },
+      {
+        Sid      = "DynamoDB"
+        Effect   = "Allow"
+        Action   = ["dynamodb:*"]
+        Resource = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.project}-contacts"
+      },
+      {
+        Sid      = "Lambda"
+        Effect   = "Allow"
+        Action   = ["lambda:*"]
+        Resource = "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.project}-contact"
+      },
+      {
+        Sid      = "Logs"
+        Effect   = "Allow"
+        Action   = ["logs:*"]
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*"
+      },
+      {
+        Sid      = "SES"
+        Effect   = "Allow"
+        Action   = ["ses:*"]
+        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/*"
+      },
+      {
+        Sid    = "IAMRoles"
         Effect = "Allow"
         Action = [
-          "s3:*",
-          "cloudfront:*",
-          "lambda:*",
-          "apigateway:*",
-          "dynamodb:*",
-          "ses:*",
-          "logs:*",
           "iam:GetRole",
           "iam:PassRole",
           "iam:CreateRole",
@@ -388,11 +445,32 @@ resource "aws_iam_role_policy" "github" {
           "iam:ListRolePolicies",
           "iam:GetRolePolicy",
           "iam:ListAttachedRolePolicies",
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project}-*"
+      },
+      {
+        Sid    = "IAMOidc"
+        Effect = "Allow"
+        Action = [
           "iam:CreateOpenIDConnectProvider",
           "iam:GetOpenIDConnectProvider",
           "iam:DeleteOpenIDConnectProvider",
           "iam:TagOpenIDConnectProvider",
         ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
+      },
+      {
+        # CloudFront does not support resource-level permissions for most Terraform-managed actions
+        Sid      = "CloudFront"
+        Effect   = "Allow"
+        Action   = ["cloudfront:*"]
+        Resource = "*"
+      },
+      {
+        # API Gateway v2 does not support resource-level permissions for Terraform-managed actions
+        Sid      = "ApiGateway"
+        Effect   = "Allow"
+        Action   = ["apigateway:*"]
         Resource = "*"
       },
     ]

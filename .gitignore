@@ -8,7 +8,6 @@ web/.env
 web/.env.local
 
 infra/.terraform/
-infra/.terraform.lock.hcl
 infra/*.tfstate
 infra/*.tfstate.*
 infra/*.tfvars

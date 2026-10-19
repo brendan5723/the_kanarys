@@ -57,11 +57,21 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Terraform format check
+        working-directory: infra
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        working-directory: infra
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        working-directory: infra
+        run: terraform validate
+
       - name: Terraform apply
         working-directory: infra
-        run: |
-          terraform init -input=false
-          terraform apply -input=false -auto-approve
+        run: terraform apply -input=false -auto-approve
 
       - name: Sync site and invalidate cache
         working-directory: infra

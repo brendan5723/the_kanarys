@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "concurrently -n web,contact -c gold,green \"npm run dev --prefix web\" \"npm run dev --prefix lambda/contact\"",
     "build": "npm run build --prefix web",
-    "test": "npm test --prefix lambda/contact",
+    "test": "npm test --prefix lambda/contact && npm test --prefix web",
     "lint": "npm run lint --prefix web"
   },
   "devDependencies": {
