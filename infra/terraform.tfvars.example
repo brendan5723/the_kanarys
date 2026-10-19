@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (not committed) or pass -var on the CLI.
+
+project    = "the-kanarys"
+aws_region = "eu-west-1"
+
+# Optional. Both addresses must be verified in SES sandbox.
+# ses_from = "you@example.com"
+# ses_to   = "you@example.com"
+
+# Optional. Enables the GitHub Actions OIDC deploy role.
+# github_repository            = "your-user/the-kanarys"
+# create_github_oidc_provider  = true
